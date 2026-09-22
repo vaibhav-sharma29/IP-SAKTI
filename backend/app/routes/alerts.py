@@ -1,16 +1,12 @@
 """
-Biopiracy Alerts — MongoDB
-GET  /api/alerts
-GET  /api/alerts/{id}
-PATCH /api/alerts/{id}/read
-POST /api/alerts/seed
+Biopiracy Alerts — SQLite
 """
 
 import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.database import biopiracy_alerts
+from app.database import get_conn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Biopiracy Alerts"])
@@ -78,38 +74,59 @@ DEMO_ALERTS = [
 
 
 @router.get("/alerts", response_model=list[AlertResponse])
-async def list_alerts(status: str = "open"):
-    col = biopiracy_alerts()
-    query = {} if status == "all" else {"status": status}
-    cursor = col.find(query, {"_id": 0}).sort("similarity_score", -1)
-    alerts = await cursor.to_list(length=50)
-    return alerts
+def list_alerts(status: str = "open"):
+    conn = get_conn()
+    cur = conn.cursor()
+    if status == "all":
+        cur.execute("SELECT * FROM biopiracy_alerts ORDER BY similarity_score DESC")
+    else:
+        cur.execute("SELECT * FROM biopiracy_alerts WHERE status=? ORDER BY similarity_score DESC", (status,))
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(r) | {"is_read": bool(r["is_read"])} for r in rows]
 
 
 @router.get("/alerts/{alert_id}", response_model=AlertResponse)
-async def get_alert(alert_id: str):
-    col = biopiracy_alerts()
-    alert = await col.find_one({"id": alert_id}, {"_id": 0})
-    if not alert:
+def get_alert(alert_id: str):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM biopiracy_alerts WHERE id=?", (alert_id,))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
         raise HTTPException(status_code=404, detail="Alert not found")
-    return alert
+    return dict(row) | {"is_read": bool(row["is_read"])}
 
 
 @router.patch("/alerts/{alert_id}/read")
-async def mark_read(alert_id: str):
-    col = biopiracy_alerts()
-    await col.update_one({"id": alert_id}, {"$set": {"is_read": True}})
+def mark_read(alert_id: str):
+    conn = get_conn()
+    conn.execute("UPDATE biopiracy_alerts SET is_read=1 WHERE id=?", (alert_id,))
+    conn.commit()
+    conn.close()
     return {"success": True}
 
 
 @router.post("/alerts/seed")
-async def seed_demo_alerts():
-    """Seed realistic demo alerts — run once before demo."""
-    col = biopiracy_alerts()
+def seed_demo_alerts():
+    conn = get_conn()
+    cur = conn.cursor()
     seeded = 0
-    for data in DEMO_ALERTS:
-        exists = await col.find_one({"id": data["id"]})
-        if not exists:
-            await col.insert_one(data)
+    for a in DEMO_ALERTS:
+        cur.execute("SELECT id FROM biopiracy_alerts WHERE id=?", (a["id"],))
+        if not cur.fetchone():
+            conn.execute(
+                """INSERT INTO biopiracy_alerts
+                   (id, patent_number, patent_title, applicant, filing_country,
+                    filing_date, tkdl_match, similarity_score, status,
+                    action_deadline, source_url, is_read, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (a["id"], a["patent_number"], a["patent_title"], a["applicant"],
+                 a["filing_country"], a["filing_date"], a["tkdl_match"],
+                 a["similarity_score"], a["status"], a["action_deadline"],
+                 a["source_url"], int(a["is_read"]), datetime.utcnow().isoformat())
+            )
             seeded += 1
+    conn.commit()
+    conn.close()
     return {"seeded": seeded, "message": f"{seeded} demo alerts added"}

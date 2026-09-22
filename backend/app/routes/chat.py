@@ -16,18 +16,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Chat"])
 
 
-# ── Models ───────────────────────────────────────────────────
-
 class ChatRequest(BaseModel):
     query:        str
     language:     str = "en"
     jurisdiction: str = "india"
     session_id:   str = "default"
 
+
 class Source(BaseModel):
     title:   str
     section: str = ""
     url:     str = ""
+
 
 class ChatResponse(BaseModel):
     answer:       str
@@ -38,16 +38,12 @@ class ChatResponse(BaseModel):
     session_id:   str
 
 
-# ── POST /api/chat ────────────────────────────────────────────
-
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     timer = RequestTimer()
     try:
-        # 1. Get/create session
-        await get_or_create_session(
-            req.session_id, req.language, req.jurisdiction
-        )
+        # 1. Session
+        get_or_create_session(req.session_id, req.language, req.jurisdiction)
 
         # 2. Translate if Hindi
         english_query = req.query
@@ -55,7 +51,7 @@ async def chat(req: ChatRequest):
             english_query = await translate_to_english(req.query)
 
         # 3. Save user message
-        await save_message(
+        save_message(
             session_id=req.session_id,
             role="user",
             content=req.query,
@@ -74,7 +70,7 @@ async def chat(req: ChatRequest):
             final_answer = await translate_to_hindi(result["answer"])
 
         # 6. Save AI answer
-        await save_message(
+        save_message(
             session_id=req.session_id,
             role="assistant",
             content=final_answer,
@@ -84,7 +80,7 @@ async def chat(req: ChatRequest):
         )
 
         # 7. Audit log
-        await log_request(
+        log_request(
             endpoint="/api/chat",
             method="POST",
             query=req.query,
@@ -99,10 +95,7 @@ async def chat(req: ChatRequest):
             answer=final_answer,
             sources=[Source(**s) for s in result["sources"]],
             confidence=result["confidence"],
-            disclaimer=(
-                "⚠️ This is information only, not legal advice. "
-                "Consult a qualified IP attorney for specific cases."
-            ),
+            disclaimer="⚠️ This is information only, not legal advice. Consult a qualified IP attorney for specific cases.",
             jurisdiction=req.jurisdiction,
             session_id=req.session_id
         )
@@ -112,9 +105,7 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── GET /api/chat/history/{session_id} ───────────────────────
-
 @router.get("/chat/history/{session_id}")
-async def get_history(session_id: str):
-    history = await get_session_history(session_id)
+def get_history(session_id: str):
+    history = get_session_history(session_id)
     return {"session_id": session_id, "messages": history}

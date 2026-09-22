@@ -1,65 +1,85 @@
 """
-MongoDB Atlas Connection — Motor (async driver)
+Database — SQLite (zero setup, works everywhere)
 
-No local install needed.
-Free forever on MongoDB Atlas M0 tier (512MB).
-
-Setup:
-1. mongodb.com/atlas → Create free account
-2. Create FREE cluster (M0 - Shared)
-3. Database Access → Add user → username + password
-4. Network Access → Add IP → 0.0.0.0/0 (allow all)
-5. Clusters → Connect → Drivers → Copy connection string
-6. Paste in .env as MONGODB_URL
+For hackathon: SQLite is perfect.
+- No cloud account needed
+- No configuration needed
+- Works locally AND on Render/Railway deployment
+- File: backend/ipsakti.db (auto-created)
 """
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from app.config import settings
+import sqlite3
+import os
+import json
+import uuid
+import hashlib
+from datetime import datetime
 
-# Global client — created once on startup
-_client: AsyncIOMotorClient = None
-_db = None
-
-
-def get_client() -> AsyncIOMotorClient:
-    global _client
-    if _client is None:
-        _client = AsyncIOMotorClient(settings.mongodb_url)
-    return _client
+DB_PATH = os.environ.get("DB_PATH", "./ipsakti.db")
 
 
-def get_db():
-    """Returns the ipsakti database handle"""
-    return get_client()["ipsakti"]
+def get_conn():
+    """Get SQLite connection — creates DB file if not exists"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row   # dict-like rows
+    conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
+    return conn
 
 
-# ── Collection helpers ───────────────────────────────────────
+def init_db():
+    """Create all tables — called once on startup"""
+    conn = get_conn()
+    cur = conn.cursor()
 
-def chat_sessions():
-    return get_db()["chat_sessions"]
+    cur.executescript("""
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id           TEXT PRIMARY KEY,
+            language     TEXT DEFAULT 'en',
+            jurisdiction TEXT DEFAULT 'india',
+            created_at   TEXT
+        );
 
-def chat_messages():
-    return get_db()["chat_messages"]
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id           TEXT PRIMARY KEY,
+            session_id   TEXT,
+            role         TEXT,
+            content      TEXT,
+            sources      TEXT,
+            confidence   TEXT DEFAULT 'medium',
+            jurisdiction TEXT DEFAULT 'india',
+            created_at   TEXT
+        );
 
-def audit_logs():
-    return get_db()["audit_logs"]
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint     TEXT,
+            method       TEXT,
+            jurisdiction TEXT,
+            language     TEXT,
+            query_hash   TEXT,
+            confidence   TEXT,
+            latency_ms   REAL,
+            status_code  INTEGER,
+            timestamp    TEXT
+        );
 
-def biopiracy_alerts():
-    return get_db()["biopiracy_alerts"]
+        CREATE TABLE IF NOT EXISTS biopiracy_alerts (
+            id               TEXT PRIMARY KEY,
+            patent_number    TEXT,
+            patent_title     TEXT,
+            applicant        TEXT,
+            filing_country   TEXT,
+            filing_date      TEXT,
+            tkdl_match       TEXT,
+            similarity_score REAL,
+            status           TEXT DEFAULT 'open',
+            action_deadline  TEXT,
+            source_url       TEXT,
+            is_read          INTEGER DEFAULT 0,
+            created_at       TEXT
+        );
+    """)
 
-
-# ── Startup / Shutdown ───────────────────────────────────────
-
-async def connect_db():
-    """Called on FastAPI startup — test connection"""
-    client = get_client()
-    await client.admin.command("ping")
-    print("MongoDB Atlas connected successfully.")
-
-
-async def close_db():
-    """Called on FastAPI shutdown"""
-    global _client
-    if _client:
-        _client.close()
-        _client = None
+    conn.commit()
+    conn.close()
+    print(f"SQLite DB ready: {DB_PATH}")

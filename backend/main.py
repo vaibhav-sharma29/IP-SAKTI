@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import connect_db, close_db
+from app.database import init_db
 from app.routes import chat, classify, health, alerts
 
 logging.basicConfig(
@@ -15,17 +15,16 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Connecting to MongoDB Atlas...")
-    await connect_db()
+    logger.info("Initializing SQLite database...")
+    init_db()
     logger.info("IP-SAKTI backend ready.")
     yield
-    await close_db()
-    logger.info("MongoDB connection closed.")
+    logger.info("IP-SAKTI backend shutting down.")
 
 
 app = FastAPI(
     title="IP-SAKTI API",
-    description="RAG-based AI assistant for Ayurveda IP & Regulatory Guidance | SIH 2026",
+    description="RAG-based AI assistant for Ayurveda IP | SIH 2026",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
@@ -34,10 +33,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://ip-sakti.vercel.app",
-    ],
+    allow_origins=["*"],   # tighten after deployment
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

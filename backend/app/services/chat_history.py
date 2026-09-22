@@ -1,43 +1,37 @@
 """
-Chat History Service — MongoDB Atlas
-
-Saves every conversation so:
-1. Full audit trail (PS requirement)
-2. Session restore possible
-3. Analytics on most-asked questions
+Chat History Service — SQLite
 """
 
+import json
 import uuid
-import logging
 from datetime import datetime
-from app.database import chat_sessions, chat_messages
-
-logger = logging.getLogger(__name__)
+from app.database import get_conn
 
 
-async def get_or_create_session(
+def get_or_create_session(
     session_id: str,
     language: str = "en",
     jurisdiction: str = "india"
 ) -> dict:
-    """Get existing session or create new one in MongoDB"""
-    col = chat_sessions()
-    session = await col.find_one({"_id": session_id})
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM chat_sessions WHERE id = ?", (session_id,))
+    session = cur.fetchone()
 
     if not session:
-        session = {
-            "_id":        session_id,
-            "language":   language,
-            "jurisdiction": jurisdiction,
-            "created_at": datetime.utcnow().isoformat(),
-        }
-        await col.insert_one(session)
-        logger.info(f"New session created: {session_id}")
+        now = datetime.utcnow().isoformat()
+        cur.execute(
+            "INSERT INTO chat_sessions (id, language, jurisdiction, created_at) VALUES (?,?,?,?)",
+            (session_id, language, jurisdiction, now)
+        )
+        conn.commit()
 
-    return session
+    conn.close()
+    return {"id": session_id, "language": language, "jurisdiction": jurisdiction}
 
 
-async def save_message(
+def save_message(
     session_id: str,
     role: str,
     content: str,
@@ -45,33 +39,41 @@ async def save_message(
     confidence: str = "medium",
     jurisdiction: str = "india"
 ) -> str:
-    """Save one message to MongoDB. Returns message id."""
     msg_id = str(uuid.uuid4())
-    col = chat_messages()
+    now = datetime.utcnow().isoformat()
 
-    await col.insert_one({
-        "_id":          msg_id,
-        "session_id":   session_id,
-        "role":         role,           # "user" or "assistant"
-        "content":      content,
-        "sources":      sources or [],
-        "confidence":   confidence,
-        "jurisdiction": jurisdiction,
-        "created_at":   datetime.utcnow().isoformat()
-    })
+    conn = get_conn()
+    conn.execute(
+        """INSERT INTO chat_messages
+           (id, session_id, role, content, sources, confidence, jurisdiction, created_at)
+           VALUES (?,?,?,?,?,?,?,?)""",
+        (msg_id, session_id, role, content,
+         json.dumps(sources or []), confidence, jurisdiction, now)
+    )
+    conn.commit()
+    conn.close()
     return msg_id
 
 
-async def get_session_history(
-    session_id: str,
-    limit: int = 20
-) -> list[dict]:
-    """Get last N messages for a session — for chat restore"""
-    col = chat_messages()
-    cursor = col.find(
-        {"session_id": session_id},
-        {"_id": 0}
-    ).sort("created_at", 1).limit(limit)
+def get_session_history(session_id: str, limit: int = 20) -> list[dict]:
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT role, content, sources, confidence, created_at
+           FROM chat_messages WHERE session_id = ?
+           ORDER BY created_at ASC LIMIT ?""",
+        (session_id, limit)
+    )
+    rows = cur.fetchall()
+    conn.close()
 
-    messages = await cursor.to_list(length=limit)
-    return messages
+    return [
+        {
+            "role":       row["role"],
+            "content":    row["content"],
+            "sources":    json.loads(row["sources"] or "[]"),
+            "confidence": row["confidence"],
+            "created_at": row["created_at"]
+        }
+        for row in rows
+    ]

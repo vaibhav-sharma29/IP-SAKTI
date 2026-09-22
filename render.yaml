@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ip-sakti-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false        # set manually in Render dashboard
+      - key: CHROMA_DB_PATH
+        value: ./chroma_db
+      - key: DB_PATH
+        value: ./ipsakti.db
+      - key: APP_ENV
+        value: production
