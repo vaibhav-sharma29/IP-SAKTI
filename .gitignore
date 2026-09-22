@@ -21,9 +21,11 @@ ENV/
 .env.local
 .env.*.local
 
-# ChromaDB local vector store
-backend/chroma_db/
+# Raw PDFs — don't commit (large files)
 backend/data/raw_pdfs/
+
+# ChromaDB — DO commit (needed for deployment)
+# backend/chroma_db/  ← intentionally NOT ignored
 
 # Logs
 *.log
