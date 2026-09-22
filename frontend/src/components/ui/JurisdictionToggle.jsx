@@ -18,20 +18,24 @@ export default function JurisdictionToggle({ value, onChange }) {
   ]
 
   return (
-    <div className="flex rounded-lg overflow-hidden border border-gray-700">
-      {options.map(opt => (
-        <button
-          key={opt.val}
-          onClick={() => onChange(opt.val)}
-          className={`px-4 py-2 text-sm font-medium transition ${
-            value === opt.val
-              ? 'bg-purple-600 text-white'
-              : 'bg-gray-900 text-gray-400 hover:text-white'
-          }`}
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div className="inline-flex rounded-lg overflow-hidden border border-gray-700 divide-x divide-gray-700 bg-gray-950/60 shadow-sm">
+      {options.map(opt => {
+        const isActive = value === opt.val
+        return (
+          <button
+            key={opt.val}
+            type="button"
+            onClick={() => onChange(opt.val)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              isActive
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-transparent text-gray-400 hover:text-white hover:bg-gray-800/50'
+            }`}
+          >
+            {opt.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

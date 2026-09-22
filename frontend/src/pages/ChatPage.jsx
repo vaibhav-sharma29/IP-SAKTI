@@ -1,52 +1,9 @@
 /**
  * CHAT PAGE — Main feature page
  *
- * Layout:
- * ┌─────────────────────────────────────────┐
- * │  Jurisdiction Toggle  [🇮🇳 India] [🌍 Intl] │
- * │  Language Toggle      [EN] [HI]          │
- * ├─────────────────────────────────────────┤
- * │                                         │
- * │   Chat messages area (scrollable)       │
- * │   - User messages (right aligned)       │
- * │   - AI messages (left aligned)          │
- * │     with source citation cards below    │
- * │     and confidence badge                │
- * │                                         │
- * ├─────────────────────────────────────────┤
- * │  [ Type your question here...      ] 📤 │
- * └─────────────────────────────────────────┘
- *
- * API CONTRACT — POST /api/chat
- *
- * REQUEST body (send this to backend):
- * {
- *   "query":        string,   ← user ka message
- *   "language":     "en"|"hi",
- *   "jurisdiction": "india"|"international"|"both",
- *   "session_id":   string    ← use "default" for now
- * }
- *
- * RESPONSE from backend:
- * {
- *   "answer":       string,   ← AI ka jawab (show in chat bubble)
- *   "sources": [              ← Show as cards below the answer
- *     {
- *       "title":   string,    ← e.g. "Patents Act 1970"
- *       "section": string,    ← e.g. "Section 3(p)"
- *       "url":     string     ← link to official doc
- *     }
- *   ],
- *   "confidence":  "high"|"medium"|"low",  ← show as colored badge
- *   "disclaimer":  string,    ← show in small text below answer
- *   "jurisdiction": string
- * }
- *
- * LOADING STATE:
- * Show a typing animation while waiting for API response.
- *
- * ERROR STATE:
- * Show "Something went wrong. Please try again." in red.
+ * API CONTRACT MATCHED — POST /api/chat
+ * Payload sent: { query, language, jurisdiction, session_id: 'default' }
+ * Response mapped: response.answer, response.sources, response.confidence, response.disclaimer
  */
 
 import { useState } from 'react'
@@ -57,21 +14,21 @@ import LanguageToggle from '../components/ui/LanguageToggle'
 import { sendChatMessage } from '../api/chatApi'
 
 export default function ChatPage() {
-  const [messages, setMessages]       = useState([])
-  const [language, setLanguage]       = useState('en')
+  const [messages, setMessages] = useState([])
+  const [language, setLanguage] = useState('en')
   const [jurisdiction, setJurisdiction] = useState('india')
-  const [loading, setLoading]         = useState(false)
+  const [loading, setLoading] = useState(false)
 
   const handleSend = async (query) => {
     if (!query.trim()) return
 
-    // Add user message to chat
+    // 1. Add user message
     const userMsg = { role: 'user', content: query }
     setMessages(prev => [...prev, userMsg])
     setLoading(true)
 
     try {
-      // Call backend API
+      // 2. Call backend API with precise contract payload
       const response = await sendChatMessage({
         query,
         language,
@@ -79,23 +36,24 @@ export default function ChatPage() {
         session_id: 'default'
       })
 
-      // Add AI response to chat
+      // 3. Map backend response values to chat assistant bubble
       const aiMsg = {
         role: 'assistant',
-        content:    response.answer,
-        sources:    response.sources,
-        confidence: response.confidence,
-        disclaimer: response.disclaimer
+        content: response.answer,
+        sources: response.sources || [],
+        confidence: response.confidence || 'medium',
+        disclaimer: response.disclaimer || ''
       }
       setMessages(prev => [...prev, aiMsg])
 
     } catch (err) {
+      // Error state fallback
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: 'Something went wrong. Please try again.',
         sources: [],
         confidence: 'low',
-        disclaimer: ''
+        disclaimer: err?.message || 'Server response failed.'
       }])
     } finally {
       setLoading(false)
@@ -103,19 +61,33 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col h-[90vh]">
+    <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col h-[calc(100vh-80px)] space-y-4">
 
-      {/* Top Controls */}
-      <div className="flex justify-between items-center mb-4">
-        <JurisdictionToggle value={jurisdiction} onChange={setJurisdiction} />
-        <LanguageToggle value={language} onChange={setLanguage} />
+      {/* Top Header Controls Bar */}
+      <div className="flex flex-wrap justify-between items-center gap-3 bg-gray-900/80 border border-gray-800 rounded-2xl p-3 shadow-md backdrop-blur-md">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-purple-300">
+            IP Assistant Chat
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <JurisdictionToggle value={jurisdiction} onChange={setJurisdiction} />
+          <LanguageToggle value={language} onChange={setLanguage} />
+        </div>
       </div>
 
-      {/* Chat messages */}
-      <ChatWindow messages={messages} loading={loading} />
+      {/* Main Chat Stream Container */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <ChatWindow messages={messages} loading={loading} />
+      </div>
 
-      {/* Input box */}
-      <ChatInput onSend={handleSend} loading={loading} language={language} />
+      {/* Bottom Sticky Input */}
+      <div className="pt-1">
+        <ChatInput onSend={handleSend} loading={loading} language={language} />
+      </div>
+
     </div>
   )
 }
