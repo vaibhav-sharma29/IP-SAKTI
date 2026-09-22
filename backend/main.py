@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routes import chat, classify, health, alerts
+from app.routes import chat, classify, health, alerts, abs_checker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,10 +39,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health.router,   prefix="/api")
-app.include_router(chat.router,     prefix="/api")
-app.include_router(classify.router, prefix="/api")
-app.include_router(alerts.router,   prefix="/api")
+app.include_router(health.router,       prefix="/api")
+app.include_router(chat.router,         prefix="/api")
+app.include_router(classify.router,     prefix="/api")
+app.include_router(alerts.router,       prefix="/api")
+app.include_router(abs_checker.router,  prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
