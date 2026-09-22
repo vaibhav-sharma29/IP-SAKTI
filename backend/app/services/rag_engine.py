@@ -89,7 +89,7 @@ def _get_international_vectorstore() -> Chroma:
 @lru_cache(maxsize=1)
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-3.6-flash",   # recommended by Google API error message
         google_api_key=settings.gemini_api_key,
         temperature=0.1,
         max_retries=3,
@@ -212,14 +212,9 @@ def _retrieve_and_generate(
     """
     # Step 1: Retrieve top-K relevant chunks
     retriever = vectorstore.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": k, "score_threshold": 0.3}
+        search_kwargs={"k": k}
     )
-    docs = retriever.get_relevant_documents(query)
-
-    if not docs:
-        # Fallback: no threshold
-        docs = vectorstore.similarity_search(query, k=3)
+    docs = retriever.invoke(query)
 
     # Step 2: Build context from retrieved chunks
     context = "\n\n---\n\n".join([
@@ -234,7 +229,18 @@ def _retrieve_and_generate(
 
     try:
         response = llm.invoke(prompt_text)
-        answer = response.content if hasattr(response, "content") else str(response)
+        # Handle both string and list responses
+        if hasattr(response, "content"):
+            content = response.content
+            if isinstance(content, list):
+                answer = " ".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            else:
+                answer = str(content)
+        else:
+            answer = str(response)
     except Exception as e:
         logger.error(f"Gemini generation error: {e}")
         answer = (
