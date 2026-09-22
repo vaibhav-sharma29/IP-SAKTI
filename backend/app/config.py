@@ -3,23 +3,22 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # ── AI APIs ──────────────────────────────────────────────
-    gemini_api_key:    str
+    gemini_api_key: str
 
-    # ── Translation (Bhashini — Govt of India FREE) ──────────
-    bhashini_api_key:  str = ""
-    bhashini_user_id:  str = ""
+    # ── Bhashini (optional — Hindi translation) ──────────────
+    bhashini_api_key: str = ""
+    bhashini_user_id: str = ""
 
-    # ── AWS PostgreSQL (RDS) ──────────────────────────────────
-    # Local:  postgresql+asyncpg://postgres:password@localhost:5432/ipsakti
-    # AWS:    postgresql+asyncpg://user:pass@<endpoint>.rds.amazonaws.com:5432/ipsakti
-    database_url:      str = "postgresql+asyncpg://postgres:password@localhost:5432/ipsakti"
+    # ── MongoDB Atlas ─────────────────────────────────────────
+    # Free forever: mongodb.com/atlas (M0 tier)
+    mongodb_url: str = "mongodb://localhost:27017"
 
     # ── ChromaDB local vector store ───────────────────────────
-    chroma_db_path:    str = "./chroma_db"
+    chroma_db_path: str = "./chroma_db"
 
     # ── App ───────────────────────────────────────────────────
-    app_env:           str = "development"
-    log_level:         str = "INFO"
+    app_env:   str = "development"
+    log_level: str = "INFO"
 
     class Config:
         env_file = ".env"

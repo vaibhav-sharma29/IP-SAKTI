@@ -3,10 +3,9 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 
-# ── Database — AWS RDS PostgreSQL ────────────────────────────
-sqlalchemy==2.0.31
-asyncpg==0.29.0               # async PostgreSQL driver
-psycopg2-binary==2.9.9        # sync driver (for migrations)
+# ── Database — MongoDB Atlas (FREE cloud) ────────────────────
+motor==3.4.0               # async MongoDB driver for FastAPI
+pymongo==4.7.3             # sync MongoDB (corpus builder)
 
 # ── RAG & AI ──────────────────────────────────────────────────
 langchain==0.2.6
@@ -15,11 +14,10 @@ langchain-google-genai==1.0.6
 langchain-chroma==0.1.2
 chromadb==0.5.3
 
-# ── Embeddings (runs locally — free) ─────────────────────────
+# ── Embeddings (free, runs locally) ──────────────────────────
 sentence-transformers==3.0.1
-torch==2.3.1                  # CPU only — remove +cpu suffix if GPU available
 
-# ── PDF Parsing (corpus builder) ─────────────────────────────
+# ── PDF Parsing ───────────────────────────────────────────────
 pymupdf==1.24.5
 pdfplumber==0.11.1
 
@@ -32,8 +30,3 @@ beautifulsoup4==4.12.3
 python-dotenv==1.0.1
 pydantic==2.7.4
 pydantic-settings==2.3.3
-
-# ── Dev Tools ─────────────────────────────────────────────────
-pytest==8.2.2
-pytest-asyncio==0.23.7
-black==24.4.2

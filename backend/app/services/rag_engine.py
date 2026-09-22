@@ -19,10 +19,9 @@ from functools import lru_cache
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_chroma import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.prompts import PromptTemplate
-from langchain.schema import Document
-from langchain.agents import Tool, initialize_agent, AgentType
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.prompts import PromptTemplate
+from langchain_core.documents import Document
 
 from app.config import settings
 

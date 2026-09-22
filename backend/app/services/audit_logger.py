@@ -1,34 +1,20 @@
 """
-Audit Logger — DPDP Compliance Service
+Audit Logger — DPDP Compliance (MongoDB)
 
-PS requirement:
-  "privacy, audit and security aligned to the
-   Digital Personal Data Protection regime"
-
-What we log:
-  - Which endpoint was called
-  - Language + jurisdiction (no PII)
-  - SHA-256 hash of query (not raw text — DPDP)
-  - Response confidence + latency
-  - HTTP status code
-
-What we NEVER log:
-  - Raw query text
-  - User IP address
-  - Any personally identifiable information
+Logs every API call — no raw query text stored (DPDP).
+Query is SHA-256 hashed before storage.
 """
 
 import time
+import hashlib
 import logging
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.models import AuditLog
-from app.services.rag_engine import hash_query
+from datetime import datetime
+from app.database import audit_logs
 
 logger = logging.getLogger(__name__)
 
 
 async def log_request(
-    db: AsyncSession,
     endpoint: str,
     method: str,
     query: str = "",
@@ -38,38 +24,26 @@ async def log_request(
     latency_ms: float = 0.0,
     status_code: int = 200
 ) -> None:
-    """
-    Write one audit log entry.
-    Raw query is hashed — never stored as plaintext (DPDP).
-    Fire-and-forget — errors here should NOT crash the main request.
-    """
+    """Write audit log to MongoDB — never stores raw query text."""
     try:
-        entry = AuditLog(
-            endpoint=endpoint,
-            method=method,
-            jurisdiction=jurisdiction,
-            language=language,
-            query_hash=hash_query(query) if query else None,
-            response_confidence=confidence,
-            latency_ms=round(latency_ms, 2),
-            status_code=status_code
-        )
-        db.add(entry)
-        await db.flush()
+        col = audit_logs()
+        await col.insert_one({
+            "endpoint":    endpoint,
+            "method":      method,
+            "jurisdiction": jurisdiction,
+            "language":    language,
+            "query_hash":  hashlib.sha256(query.encode()).hexdigest() if query else None,
+            "confidence":  confidence,
+            "latency_ms":  round(latency_ms, 2),
+            "status_code": status_code,
+            "timestamp":   datetime.utcnow().isoformat()
+        })
     except Exception as e:
-        # Never crash the main request because of audit failure
-        logger.warning(f"Audit log write failed (non-fatal): {e}")
+        logger.warning(f"Audit log failed (non-fatal): {e}")
 
 
 class RequestTimer:
-    """
-    Simple context manager to measure API latency.
-
-    Usage:
-        timer = RequestTimer()
-        # ... do work ...
-        latency = timer.elapsed_ms()
-    """
+    """Measure API latency in milliseconds."""
     def __init__(self):
         self._start = time.perf_counter()
 

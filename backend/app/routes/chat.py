@@ -1,24 +1,12 @@
 """
 Chat Route — POST /api/chat
 GET  /api/chat/history/{session_id}
-
-Complete flow:
-1. Receive query from frontend
-2. Translate if Hindi (Bhashini)
-3. Save user message to PostgreSQL
-4. Run RAG pipeline (LangChain + ChromaDB + Gemini)
-5. Translate answer back if Hindi
-6. Save AI answer to PostgreSQL
-7. Write audit log (DPDP compliant — no raw PII)
-8. Return structured response
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
 from app.services.rag_engine import get_rag_response
 from app.services.translation import translate_to_english, translate_to_hindi
 from app.services.chat_history import get_or_create_session, save_message, get_session_history
@@ -28,12 +16,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Chat"])
 
 
-# ── Request / Response models ────────────────────────────────
+# ── Models ───────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
     query:        str
-    language:     str = "en"          # "en" or "hi"
-    jurisdiction: str = "india"       # "india" | "international" | "both"
+    language:     str = "en"
+    jurisdiction: str = "india"
     session_id:   str = "default"
 
 class Source(BaseModel):
@@ -44,7 +32,7 @@ class Source(BaseModel):
 class ChatResponse(BaseModel):
     answer:       str
     sources:      list[Source]
-    confidence:   str               # "high" | "medium" | "low"
+    confidence:   str
     disclaimer:   str
     jurisdiction: str
     session_id:   str
@@ -53,33 +41,24 @@ class ChatResponse(BaseModel):
 # ── POST /api/chat ────────────────────────────────────────────
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(
-    req: ChatRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def chat(req: ChatRequest):
     timer = RequestTimer()
-    status = 200
-
     try:
-        # 1. Get or create session in DB
+        # 1. Get/create session
         await get_or_create_session(
-            db,
-            session_id=req.session_id,
-            language=req.language,
-            jurisdiction=req.jurisdiction
+            req.session_id, req.language, req.jurisdiction
         )
 
-        # 2. Translate query to English if Hindi
+        # 2. Translate if Hindi
         english_query = req.query
         if req.language == "hi":
             english_query = await translate_to_english(req.query)
 
-        # 3. Save user message to DB
+        # 3. Save user message
         await save_message(
-            db,
             session_id=req.session_id,
             role="user",
-            content=req.query,       # store original language
+            content=req.query,
             jurisdiction=req.jurisdiction
         )
 
@@ -89,14 +68,13 @@ async def chat(
             jurisdiction=req.jurisdiction
         )
 
-        # 5. Translate answer back if Hindi requested
+        # 5. Translate answer back if Hindi
         final_answer = result["answer"]
         if req.language == "hi":
             final_answer = await translate_to_hindi(result["answer"])
 
-        # 6. Save AI answer to DB
+        # 6. Save AI answer
         await save_message(
-            db,
             session_id=req.session_id,
             role="assistant",
             content=final_answer,
@@ -107,7 +85,6 @@ async def chat(
 
         # 7. Audit log
         await log_request(
-            db,
             endpoint="/api/chat",
             method="POST",
             query=req.query,
@@ -131,31 +108,13 @@ async def chat(
         )
 
     except Exception as e:
-        status = 500
         logger.error(f"Chat error: {e}")
-        await log_request(
-            db,
-            endpoint="/api/chat",
-            method="POST",
-            query=req.query,
-            language=req.language,
-            jurisdiction=req.jurisdiction,
-            latency_ms=timer.elapsed_ms(),
-            status_code=500
-        )
-        raise HTTPException(status_code=500, detail="Internal server error. Please try again.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── GET /api/chat/history/{session_id} ───────────────────────
 
 @router.get("/chat/history/{session_id}")
-async def get_history(
-    session_id: str,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Returns previous messages for a session.
-    Frontend uses this to restore chat on page reload.
-    """
-    history = await get_session_history(db, session_id)
+async def get_history(session_id: str):
+    history = await get_session_history(session_id)
     return {"session_id": session_id, "messages": history}

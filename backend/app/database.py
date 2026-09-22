@@ -1,50 +1,65 @@
 """
-Database connection — AWS RDS PostgreSQL
+MongoDB Atlas Connection — Motor (async driver)
 
-Local dev:  postgresql://postgres:password@localhost:5432/ipsakti
-AWS RDS:    postgresql://user:pass@<rds-endpoint>.amazonaws.com:5432/ipsakti
+No local install needed.
+Free forever on MongoDB Atlas M0 tier (512MB).
 
-Set DATABASE_URL in .env — app connects automatically.
-SQLAlchemy async engine so FastAPI stays non-blocking.
+Setup:
+1. mongodb.com/atlas → Create free account
+2. Create FREE cluster (M0 - Shared)
+3. Database Access → Add user → username + password
+4. Network Access → Add IP → 0.0.0.0/0 (allow all)
+5. Clusters → Connect → Drivers → Copy connection string
+6. Paste in .env as MONGODB_URL
 """
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
+from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import settings
 
-# asyncpg driver — async PostgreSQL
-engine = create_async_engine(
-    settings.database_url,
-    echo=False,          # True for SQL debug logs
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,  # Test connection before use (important for RDS)
-)
-
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
-
-class Base(DeclarativeBase):
-    pass
+# Global client — created once on startup
+_client: AsyncIOMotorClient = None
+_db = None
 
 
-async def get_db():
-    """FastAPI dependency — use in route with Depends(get_db)"""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+def get_client() -> AsyncIOMotorClient:
+    global _client
+    if _client is None:
+        _client = AsyncIOMotorClient(settings.mongodb_url)
+    return _client
 
 
-async def init_db():
-    """Create all tables on startup — called from main.py lifespan"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+def get_db():
+    """Returns the ipsakti database handle"""
+    return get_client()["ipsakti"]
+
+
+# ── Collection helpers ───────────────────────────────────────
+
+def chat_sessions():
+    return get_db()["chat_sessions"]
+
+def chat_messages():
+    return get_db()["chat_messages"]
+
+def audit_logs():
+    return get_db()["audit_logs"]
+
+def biopiracy_alerts():
+    return get_db()["biopiracy_alerts"]
+
+
+# ── Startup / Shutdown ───────────────────────────────────────
+
+async def connect_db():
+    """Called on FastAPI startup — test connection"""
+    client = get_client()
+    await client.admin.command("ping")
+    print("MongoDB Atlas connected successfully.")
+
+
+async def close_db():
+    """Called on FastAPI shutdown"""
+    global _client
+    if _client:
+        _client.close()
+        _client = None
