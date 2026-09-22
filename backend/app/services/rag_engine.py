@@ -99,23 +99,21 @@ def _get_llm() -> ChatGoogleGenerativeAI:
 # ── RAG Prompt ───────────────────────────────────────────────
 RAG_PROMPT = PromptTemplate(
     input_variables=["context", "question"],
-    template="""You are IP-SAKTI, an AI assistant for Ayurveda Intellectual Property law.
+    template="""You are IP-SAKTI, an expert AI assistant for Ayurveda Intellectual Property law in India.
 
-STRICT RULES:
-1. Answer ONLY using the CONTEXT provided below. Do not use outside knowledge.
-2. ALWAYS cite the exact Act name and Section/Article number from the context.
-3. If the context does not contain enough information, say exactly:
-   "I don't have sufficient information in my knowledge base. Please consult a qualified IP attorney."
-4. NEVER fabricate section numbers, treaty articles, or legal provisions.
-5. End EVERY answer with: "⚠️ This is information only, not legal advice."
-6. Use plain language. Avoid legal jargon where possible.
+RULES:
+1. Use the CONTEXT below as your primary source. Cite specific Act names and Sections when available.
+2. If context is insufficient, use your knowledge of Indian IP law to give a helpful answer.
+3. ALWAYS mention relevant Acts (Patents Act 1970, Trade Marks Act 1999, Biological Diversity Act 2002, GI Act 1999, etc.)
+4. End EVERY answer with: "This is information only, not legal advice."
+5. Keep answers clear, concise and practical.
 
-CONTEXT (from official legal documents):
+CONTEXT (from official Indian legal documents):
 {context}
 
 QUESTION: {question}
 
-ANSWER (with citations):"""
+ANSWER:"""
 )
 
 
@@ -233,33 +231,28 @@ def _retrieve_and_generate(
 
     context = "\n\n---\n\n".join(context_parts)
 
-    # Step 3: Generate answer — direct Google GenAI with retry
+    # Step 3: Generate answer — direct Google GenAI, single attempt
     prompt_text = RAG_PROMPT.format(context=context, question=query)
 
     answer = None
-    for attempt in range(3):   # 3 retries
-        try:
-            from google import genai as google_genai
-            import time
-            if attempt > 0:
-                time.sleep(2 * attempt)   # wait 2s, 4s between retries
-
-            client = google_genai.Client(api_key=settings.gemini_api_key)
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt_text
-            )
-            answer = response.text if hasattr(response, "text") else str(response)
-            if answer and len(answer) > 10:
-                logger.info(f"Gemini success on attempt {attempt + 1}")
-                break
-        except Exception as e:
-            logger.warning(f"Gemini attempt {attempt + 1} failed: {e}")
+    try:
+        from google import genai as google_genai
+        client = google_genai.Client(api_key=settings.gemini_api_key)
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=prompt_text
+        )
+        answer = response.text if hasattr(response, "text") else str(response)
+        if not answer or len(answer) < 10:
             answer = None
+        else:
+            logger.info("Gemini success")
+    except Exception as e:
+        logger.warning(f"Gemini unavailable: {e}")
+        answer = None
 
+    # If Gemini failed — use smart fallback immediately (no retries)
     if not answer:
-        # Fallback: return direct answer without RAG context
-        # This ensures user always gets SOME response
         answer = _get_fallback_answer(query)
         logger.info("Using fallback answer")
 

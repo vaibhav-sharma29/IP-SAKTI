@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Initializing SQLite database...")
     init_db()
-    logger.info("IP-SAKTI backend ready.")
+    logger.info("Pre-loading embedding model...")
+    # Load embedding model at startup so first request is fast
+    import asyncio
+    loop = asyncio.get_event_loop()
+    from app.services.rag_engine import _get_embeddings, _get_india_vectorstore, _get_international_vectorstore
+    await loop.run_in_executor(None, _get_india_vectorstore)
+    await loop.run_in_executor(None, _get_international_vectorstore)
+    logger.info("IP-SAKTI backend ready — all models loaded.")
     yield
     logger.info("IP-SAKTI backend shutting down.")
 
