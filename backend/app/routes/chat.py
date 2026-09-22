@@ -95,7 +95,7 @@ async def chat(req: ChatRequest):
             answer=final_answer,
             sources=[Source(**s) for s in result["sources"]],
             confidence=result["confidence"],
-            disclaimer="⚠️ This is information only, not legal advice. Consult a qualified IP attorney for specific cases.",
+            disclaimer="This is information only, not legal advice. Consult a qualified IP attorney for specific cases.",
             jurisdiction=req.jurisdiction,
             session_id=req.session_id
         )

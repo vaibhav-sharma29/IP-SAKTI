@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { autoDetectClassification } from '../../api/classifyApi'
 
 const QUESTIONS = [
   {
@@ -28,12 +29,36 @@ const QUESTIONS = [
 ]
 
 export default function ClassifyForm({ onSubmit, loading, error }) {
-  const [step, setStep] = useState(0)  // 0 = description, 1-4 = questions
+  const [step, setStep] = useState(0)
   const [description, setDescription] = useState('')
   const [answers, setAnswers] = useState({})
+  const [autoDetecting, setAutoDetecting] = useState(false)
+  const [aiReasoning, setAiReasoning] = useState('')
 
-  const totalSteps = QUESTIONS.length + 1  // 5 total steps
+  const totalSteps = QUESTIONS.length + 1
   const progressPercent = Math.min(((step + 1) / totalSteps) * 100, 100)
+
+  // AI pre-fill on Continue click
+  const handleContinue = async () => {
+    if (!description.trim()) return
+    setAutoDetecting(true)
+    try {
+      const detected = await autoDetectClassification(description)
+      // Pre-fill answers from AI
+      setAnswers({
+        has_classical_ref: detected.has_classical_ref,
+        has_novel_process: detected.has_novel_process,
+        has_health_claim:  detected.has_health_claim,
+        is_topical:        detected.is_topical,
+      })
+      if (detected.reasoning) setAiReasoning(detected.reasoning)
+    } catch {
+      // Silently fail — user answers manually
+    } finally {
+      setAutoDetecting(false)
+      setStep(1)
+    }
+  }
 
   const handleAnswer = (key, val) => {
     const updated = { ...answers, [key]: val }
@@ -100,11 +125,18 @@ export default function ClassifyForm({ onSubmit, loading, error }) {
 
           <div className="flex justify-end pt-2">
             <button
-              onClick={() => description.trim() && setStep(1)}
-              disabled={!description.trim() || loading}
+              onClick={handleContinue}
+              disabled={!description.trim() || loading || autoDetecting}
               className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium rounded-xl disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-lg shadow-purple-600/25 flex items-center gap-2 cursor-pointer"
             >
-              Continue <span>→</span>
+              {autoDetecting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  AI Analyzing...
+                </>
+              ) : (
+                <>Continue <span>→</span></>
+              )}
             </button>
           </div>
         </div>
@@ -119,6 +151,11 @@ export default function ClassifyForm({ onSubmit, loading, error }) {
               <span className="inline-block px-3 py-1 bg-purple-950/60 border border-purple-800/50 text-purple-300 text-xs font-semibold rounded-full mb-3">
                 Question {step}
               </span>
+              {aiReasoning && step === 1 && (
+                <div className="mb-3 px-3 py-2 bg-indigo-950/40 border border-indigo-700/40 rounded-xl text-xs text-indigo-300">
+                  🤖 AI pre-filled based on: {aiReasoning}. You can change any answer.
+                </div>
+              )}
               <h3 className="text-xl font-bold text-gray-100 mb-2 leading-snug">
                 {q.question}
               </h3>
@@ -132,20 +169,34 @@ export default function ClassifyForm({ onSubmit, loading, error }) {
                 type="button"
                 onClick={() => handleAnswer(q.key, true)}
                 disabled={loading}
-                className="group py-4 px-6 bg-gray-800/80 hover:bg-emerald-950/40 border border-gray-700/80 hover:border-emerald-500/60 rounded-xl font-semibold text-gray-200 hover:text-emerald-300 transition-all duration-200 flex flex-col items-center justify-center gap-1 cursor-pointer shadow-md active:scale-[0.98]"
+                className={`group py-4 px-6 border rounded-xl font-semibold transition-all duration-200 flex flex-col items-center justify-center gap-1 cursor-pointer shadow-md active:scale-[0.98] ${
+                  answers[q.key] === true
+                    ? 'bg-emerald-900/60 border-emerald-500/80 text-emerald-200'
+                    : 'bg-gray-800/80 hover:bg-emerald-950/40 border-gray-700/80 hover:border-emerald-500/60 text-gray-200 hover:text-emerald-300'
+                }`}
               >
                 <span className="text-2xl group-hover:scale-110 transition-transform">✅</span>
                 <span>Yes</span>
+                {answers[q.key] === true && (
+                  <span className="text-[10px] text-emerald-400 font-normal">AI suggested</span>
+                )}
               </button>
 
               <button
                 type="button"
                 onClick={() => handleAnswer(q.key, false)}
                 disabled={loading}
-                className="group py-4 px-6 bg-gray-800/80 hover:bg-rose-950/40 border border-gray-700/80 hover:border-rose-500/60 rounded-xl font-semibold text-gray-200 hover:text-rose-300 transition-all duration-200 flex flex-col items-center justify-center gap-1 cursor-pointer shadow-md active:scale-[0.98]"
+                className={`group py-4 px-6 border rounded-xl font-semibold transition-all duration-200 flex flex-col items-center justify-center gap-1 cursor-pointer shadow-md active:scale-[0.98] ${
+                  answers[q.key] === false
+                    ? 'bg-rose-900/60 border-rose-500/80 text-rose-200'
+                    : 'bg-gray-800/80 hover:bg-rose-950/40 border-gray-700/80 hover:border-rose-500/60 text-gray-200 hover:text-rose-300'
+                }`}
               >
                 <span className="text-2xl group-hover:scale-110 transition-transform">❌</span>
                 <span>No</span>
+                {answers[q.key] === false && (
+                  <span className="text-[10px] text-rose-400 font-normal">AI suggested</span>
+                )}
               </button>
             </div>
 

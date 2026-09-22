@@ -29,3 +29,21 @@ export async function classifyProduct(payload) {
   const response = await api.post('/api/classify', payload)
   return response.data
 }
+
+/**
+ * AI Auto-detect — POST /api/classify/auto-detect
+ * Reads product description and pre-fills the 4 questions.
+ *
+ * @param {string} description - Product description
+ * @returns {Promise<{
+ *   has_classical_ref: boolean,
+ *   has_novel_process: boolean,
+ *   has_health_claim: boolean,
+ *   is_topical: boolean,
+ *   reasoning: string
+ * }>}
+ */
+export async function autoDetectClassification(description) {
+  const response = await api.post('/api/classify/auto-detect', { description })
+  return response.data
+}
