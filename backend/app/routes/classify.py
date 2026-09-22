@@ -72,45 +72,31 @@ async def auto_detect(req: AutoDetectRequest):
       Output: has_classical_ref=True, has_novel_process=True, ...
     """
     try:
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-3.6-flash",
-            google_api_key=settings.gemini_api_key,
-            temperature=0
-        )
+        from google import genai as google_genai
+        client = google_genai.Client(api_key=settings.gemini_api_key)
 
         prompt = f"""You are an Ayurveda IP expert. Analyze this product description and answer 4 questions.
 
 Product Description: "{req.description}"
 
 Answer each question with ONLY true or false:
-
-Q1 has_classical_ref: Is this formula/ingredient mentioned in classical Ayurvedic texts 
-   (Charaka Samhita, Sushruta Samhita, Ashtanga Hridayam, Bhavaprakasha, etc.)?
-   → true if ingredient like Ashwagandha, Neem, Turmeric, Brahmi etc. is classical
-
-Q2 has_novel_process: Does it involve a novel/new extraction, manufacturing, or 
-   formulation process not documented in classical texts?
-   → true if keywords like "novel", "extract", "CO2", "nanoparticle", "standardized" etc.
-
-Q3 has_health_claim: Does it make health, nutrition, or therapeutic claims?
-   → true if it mentions "immunity", "cognitive", "anti-inflammatory", "supplement" etc.
-
-Q4 is_topical: Is it applied on skin or hair (not consumed internally)?
-   → true if cream, oil, serum, shampoo, face pack etc.
-
-Also give a brief reasoning (1-2 sentences).
+Q1 has_classical_ref: Is this formula/ingredient mentioned in classical Ayurvedic texts (Charaka Samhita, Sushruta Samhita, Ashtanga Hridayam)? True if ingredient like Ashwagandha, Neem, Turmeric, Brahmi etc.
+Q2 has_novel_process: Does it involve a novel extraction or manufacturing process? True if keywords like novel, extract, CO2, nanoparticle, standardized.
+Q3 has_health_claim: Does it make health or nutrition claims? True if immunity, cognitive, anti-inflammatory, supplement mentioned.
+Q4 is_topical: Is it applied on skin or hair? True if cream, oil, serum, shampoo, face pack.
 
 Respond in EXACTLY this format:
 has_classical_ref: true/false
 has_novel_process: true/false
 has_health_claim: true/false
 is_topical: true/false
-reasoning: [your reasoning here]"""
+reasoning: [one sentence]"""
 
-        response = llm.invoke(prompt)
-        text = response.content if hasattr(response, "content") else str(response)
-        if isinstance(text, list):
-            text = " ".join(str(p) for p in text)
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=prompt
+        )
+        text = response.text if hasattr(response, "text") else str(response)
 
         # Parse response
         lines = text.strip().split("\n")

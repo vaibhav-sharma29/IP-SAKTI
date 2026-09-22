@@ -8,7 +8,7 @@ import axios from 'axios'
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000, // 30 seconds — RAG thoda slow ho sakta hai
+  timeout: 120000, // 2 minutes — RAG + Gemini needs time
 })
 
 export default api

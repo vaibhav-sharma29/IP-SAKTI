@@ -89,10 +89,10 @@ def _get_international_vectorstore() -> Chroma:
 @lru_cache(maxsize=1)
 def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
-        model="gemini-3.6-flash",   # recommended by Google API error message
+        model="gemini-2.5-flash",
         google_api_key=settings.gemini_api_key,
-        temperature=0.1,
-        max_retries=3,
+        temperature=0,
+        max_retries=2,
     )
 
 
@@ -210,43 +210,58 @@ def _retrieve_and_generate(
     Sync retrieval + generation — runs in thread pool via asyncio.
     Returns { answer, sources, confidence }
     """
-    # Step 1: Retrieve top-K relevant chunks
+    # Step 1: Retrieve top-K relevant chunks — smaller k = faster
     retriever = vectorstore.as_retriever(
-        search_kwargs={"k": k}
+        search_kwargs={"k": 4}   # reduced from 6 for speed
     )
     docs = retriever.invoke(query)
 
-    # Step 2: Build context from retrieved chunks
-    context = "\n\n---\n\n".join([
-        f"[Source: {doc.metadata.get('source_file', 'Unknown')}, "
-        f"Page: {doc.metadata.get('page', 'N/A')}]\n{doc.page_content}"
-        for doc in docs
-    ])
+    # Step 2: Build context — limit size to avoid slow Gemini calls
+    context_parts = []
+    total_chars = 0
+    MAX_CONTEXT = 3000   # keep context small for fast response
 
-    # Step 3: Generate answer with Gemini
-    llm = _get_llm()
+    for doc in docs:
+        chunk = (
+            f"[Source: {doc.metadata.get('act_name', doc.metadata.get('source_file', 'Unknown'))}, "
+            f"{doc.metadata.get('citation', '')}]\n{doc.page_content[:400]}"
+        )
+        if total_chars + len(chunk) > MAX_CONTEXT:
+            break
+        context_parts.append(chunk)
+        total_chars += len(chunk)
+
+    context = "\n\n---\n\n".join(context_parts)
+
+    # Step 3: Generate answer — direct Google GenAI with retry
     prompt_text = RAG_PROMPT.format(context=context, question=query)
 
-    try:
-        response = llm.invoke(prompt_text)
-        # Handle both string and list responses
-        if hasattr(response, "content"):
-            content = response.content
-            if isinstance(content, list):
-                answer = " ".join(
-                    part.get("text", "") if isinstance(part, dict) else str(part)
-                    for part in content
-                )
-            else:
-                answer = str(content)
-        else:
-            answer = str(response)
-    except Exception as e:
-        logger.error(f"Gemini generation error: {e}")
-        answer = (
-            "I was unable to generate a response. "
-            "Please try again or consult a qualified IP attorney."
-        )
+    answer = None
+    for attempt in range(3):   # 3 retries
+        try:
+            from google import genai as google_genai
+            import time
+            if attempt > 0:
+                time.sleep(2 * attempt)   # wait 2s, 4s between retries
+
+            client = google_genai.Client(api_key=settings.gemini_api_key)
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=prompt_text
+            )
+            answer = response.text if hasattr(response, "text") else str(response)
+            if answer and len(answer) > 10:
+                logger.info(f"Gemini success on attempt {attempt + 1}")
+                break
+        except Exception as e:
+            logger.warning(f"Gemini attempt {attempt + 1} failed: {e}")
+            answer = None
+
+    if not answer:
+        # Fallback: return direct answer without RAG context
+        # This ensures user always gets SOME response
+        answer = _get_fallback_answer(query)
+        logger.info("Using fallback answer")
 
     # Step 4: Extract real sources from chunk metadata
     sources    = _extract_real_sources(docs)
@@ -332,3 +347,72 @@ async def get_rag_response(
 def hash_query(query: str) -> str:
     """SHA-256 hash of query — stored in audit log, not raw text (DPDP compliance)"""
     return hashlib.sha256(query.encode()).hexdigest()
+
+
+# ── Fallback answers when Gemini is unavailable ──────────────
+def _get_fallback_answer(query: str) -> str:
+    """
+    Rule-based fallback when Gemini API is unavailable (503).
+    Returns helpful pre-written answers for common queries.
+    """
+    q = query.lower()
+
+    if any(w in q for w in ["patent", "section 3", "3(p)", "patentable"]):
+        return (
+            "Under Section 3(p) of the Patents Act 1970, traditional knowledge "
+            "including classical Ayurvedic formulations cannot be patented in India. "
+            "However, a novel extraction process or manufacturing method may be "
+            "patentable under Section 2(1)(j). "
+            "The TKDL (Traditional Knowledge Digital Library) protects documented "
+            "traditional knowledge from biopiracy abroad. "
+            "\n\nThis is information only, not legal advice."
+        )
+
+    if any(w in q for w in ["trademark", "brand", "trade mark"]):
+        return (
+            "Under the Trade Marks Act 1999, you can register your brand name and "
+            "logo as a trademark in India. Application is filed with IP India "
+            "(ipindia.gov.in). Registration is valid for 10 years and renewable. "
+            "Descriptive names and geographic terms face higher rejection risk. "
+            "\n\nThis is information only, not legal advice."
+        )
+
+    if any(w in q for w in ["biodiversity", "nba", "abs", "biological"]):
+        return (
+            "Under the Biological Diversity Act 2002 (Section 3 & 6), commercial "
+            "use of biological resources and IP filing requires prior approval from "
+            "the National Biodiversity Authority (NBA) at nbaindia.org. "
+            "The 2023 Amendment and 2024 Rules mandate ABS disclosure in patent "
+            "applications. Non-compliance penalty: up to Rs. 1 crore. "
+            "\n\nThis is information only, not legal advice."
+        )
+
+    if any(w in q for w in ["gi tag", "geographical indication", "gi act"]):
+        return (
+            "A Geographical Indication (GI) tag under the GI Act 1999 protects "
+            "products associated with a specific geographic region. Application is "
+            "filed with IP India. GI tags protect collective community knowledge "
+            "and prevent misuse of geographic names commercially. "
+            "\n\nThis is information only, not legal advice."
+        )
+
+    if any(w in q for w in ["nagoya", "trips", "cbd", "international", "export"]):
+        return (
+            "For international IP protection of Ayurvedic products: "
+            "1) TRIPS Agreement governs global IP standards for WTO members. "
+            "2) The Nagoya Protocol (CBD) requires ABS compliance for genetic "
+            "resource use in signatory countries. "
+            "3) WIPO GRATK Treaty 2024 specifically protects traditional knowledge. "
+            "PCT filing through WIPO enables patent protection in 150+ countries. "
+            "\n\nThis is information only, not legal advice."
+        )
+
+    # Generic fallback
+    return (
+        "I currently cannot process this query due to high server load. "
+        "Please try again in a few minutes. "
+        "For immediate assistance, consult a qualified IP attorney or visit: "
+        "ipindia.gov.in (Indian IP), nbaindia.org (Biodiversity), "
+        "wipo.int (International IP). "
+        "\n\nThis is information only, not legal advice."
+    )
