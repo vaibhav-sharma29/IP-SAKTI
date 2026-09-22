@@ -1,0 +1,34 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# RAG & AI
+langchain==0.2.6
+langchain-community==0.2.6
+langchain-google-genai==1.0.6
+langchain-chroma==0.1.2
+chromadb==0.5.3
+
+# Embeddings
+sentence-transformers==3.0.1
+
+# PDF parsing
+pymupdf==1.24.5
+pdfplumber==0.11.1
+
+# Web scraping (for corpus collection)
+beautifulsoup4==4.12.3
+requests==2.32.3
+
+# Translation (Bhashini)
+httpx==0.27.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.7.4
+pydantic-settings==2.3.3
+
+# Dev tools
+pytest==8.2.2
+black==24.4.2

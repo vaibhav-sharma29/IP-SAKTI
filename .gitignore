@@ -1,0 +1,54 @@
+# ─── Python / Backend ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# ChromaDB local vector store
+backend/chroma_db/
+backend/data/raw_pdfs/
+
+# Logs
+*.log
+logs/
+
+# ─── Node / Frontend ────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# ─── OS ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# ─── IDE ────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ─── Misc ───────────────────────────────────────────────────
+*.sqlite3
+*.db
