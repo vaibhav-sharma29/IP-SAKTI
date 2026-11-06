@@ -48,7 +48,7 @@ Frontend runs at: `http://localhost:5173`
 | Role | Name |
 |------|------|
 | Backend (RAG + AI) | Vaibhav Sharma |
-| Frontend (UI/UX) | [Friend's Name] |
+| Frontend (UI/UX) | Ayush Pandey |
 
 ---
 
